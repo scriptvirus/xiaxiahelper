@@ -11,6 +11,7 @@ const state = {
   sshKey: "",
   serverPassword: "",
   secretStatus: null,
+  showSecrets: false,
   running: false,
   activeAction: "",
   progress: 0,
@@ -119,6 +120,11 @@ async function runQuickCheck() {
 
 async function runNativeDeploy() {
   if (state.running) return;
+  if (!state.githubToken && state.secretStatus && !state.secretStatus.githubToken) {
+    state.showSecrets = true;
+    appendLog("请先设置并保存 GitHub Token。保存后以后发布会自动读取本机加密配置。");
+    return;
+  }
   const message = state.commitMessage || `desktop deploy ${new Date().toLocaleString("zh-CN", { hour12: false })}`;
   localStorage.setItem("xiaxia.projectPath", state.projectPath);
   localStorage.setItem("xiaxia.commitMessage", message);
@@ -135,6 +141,10 @@ async function runNativeDeploy() {
     state.progress = result.code === 0 ? 100 : state.progress;
     appendLog(result.code === 0 ? "桌面端：原生发布完成" : `桌面端：原生发布失败，退出码 ${result.code}`);
   } catch (error) {
+    const text = String(error);
+    if (text.includes("GitHub Token") || text.includes("SSH key") || text.includes("服务器密码")) {
+      state.showSecrets = true;
+    }
     appendLog(`桌面端错误：${error}`);
   } finally {
     setRunning("", false);
@@ -153,6 +163,7 @@ async function saveSecrets() {
     state.githubToken = "";
     state.sshKey = "";
     state.serverPassword = "";
+    state.showSecrets = false;
     appendLog("OK  免输入配置已保存到本机加密文件");
   } catch (error) {
     appendLog(`保存失败：${error}`);
@@ -204,6 +215,30 @@ function secretStatusText() {
   return items.length ? `已保存：${items.join("、")}` : "未保存免输入配置";
 }
 
+function renderSecretPanel() {
+  if (!state.showSecrets) return "";
+  return `
+    <section class="secret-band">
+      <label>
+        <span>GitHub Token</span>
+        <input id="githubToken" type="password" placeholder="第一次发布前填写，保存后自动读取" value="${escapeHtml(state.githubToken)}" ${state.running ? "disabled" : ""} />
+      </label>
+      <label>
+        <span>SSH 私钥路径</span>
+        <input id="sshKey" placeholder="可留空，留空则使用项目配置或已保存路径" value="${escapeHtml(state.sshKey)}" ${state.running ? "disabled" : ""} />
+      </label>
+      <label>
+        <span>服务器密码</span>
+        <input id="serverPassword" type="password" placeholder="可留空，优先使用 SSH 私钥" value="${escapeHtml(state.serverPassword)}" ${state.running ? "disabled" : ""} />
+      </label>
+      <div class="secret-actions">
+        <button id="saveSecrets" ${state.running ? "disabled" : ""}>保存免输入配置</button>
+        <button id="hideSecrets" ${state.running ? "disabled" : ""}>收起</button>
+      </div>
+    </section>
+  `;
+}
+
 function renderCommits() {
   if (!state.commits.length) return '<div class="empty">暂无 commit 信息</div>';
   return state.commits
@@ -253,10 +288,6 @@ function render() {
           <span>发布说明</span>
           <input id="commitMessage" placeholder="例如：修复案件查询分页" value="${escapeHtml(state.commitMessage)}" ${state.running ? "disabled" : ""} />
         </label>
-        <label>
-          <span>GitHub Token</span>
-          <input id="githubToken" type="password" placeholder="留空则用已保存 Token" value="${escapeHtml(state.githubToken)}" ${state.running ? "disabled" : ""} />
-        </label>
         <div class="button-row">
           <button id="refresh" ${state.running ? "disabled" : ""}>刷新状态</button>
           <button id="quickCheck" ${state.running ? "disabled" : ""}>检查</button>
@@ -265,20 +296,11 @@ function render() {
         </div>
       </section>
 
-      <section class="secret-band">
-        <label>
-          <span>SSH 私钥路径</span>
-          <input id="sshKey" placeholder="留空则用配置文件或已保存路径" value="${escapeHtml(state.sshKey)}" ${state.running ? "disabled" : ""} />
-        </label>
-        <label>
-          <span>服务器密码</span>
-          <input id="serverPassword" type="password" placeholder="可留空，优先使用 SSH 私钥" value="${escapeHtml(state.serverPassword)}" ${state.running ? "disabled" : ""} />
-        </label>
-        <div class="secret-actions">
-          <button id="saveSecrets" ${state.running ? "disabled" : ""}>保存免输入配置</button>
-          <span>${escapeHtml(secretStatusText())}</span>
-        </div>
+      <section class="secret-summary">
+        <span>${escapeHtml(secretStatusText())}</span>
+        <button id="showSecrets" ${state.running ? "disabled" : ""}>设置凭据</button>
       </section>
+      ${renderSecretPanel()}
 
       <section class="progress-panel">
         <div class="progress-head">
@@ -323,6 +345,17 @@ function render() {
   });
   document.querySelector("#refresh")?.addEventListener("click", refreshStatus);
   document.querySelector("#saveSecrets")?.addEventListener("click", saveSecrets);
+  document.querySelector("#showSecrets")?.addEventListener("click", () => {
+    state.showSecrets = true;
+    render();
+  });
+  document.querySelector("#hideSecrets")?.addEventListener("click", () => {
+    state.showSecrets = false;
+    state.githubToken = "";
+    state.sshKey = "";
+    state.serverPassword = "";
+    render();
+  });
   document.querySelector("#quickCheck")?.addEventListener("click", runQuickCheck);
   document.querySelector("#fullCheck")?.addEventListener("click", () => runAssistant("check"));
   document.querySelector("#deploy")?.addEventListener("click", runNativeDeploy);
