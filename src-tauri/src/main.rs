@@ -255,6 +255,37 @@ fn complete_setup() -> Result<(), String> {
     Ok(())
 }
 
+const CLONE_URL: &str = "https://github.com/scriptvirus/liukexiaxia.git";
+
+#[tauri::command]
+fn clone_project(app: AppHandle, target_dir: String) -> Result<String, String> {
+    let path = PathBuf::from(&target_dir);
+
+    if path.exists() {
+        let is_empty = std::fs::read_dir(&path)
+            .map(|mut entries| entries.next().is_none())
+            .unwrap_or(false);
+        if !is_empty {
+            return Err("目标目录不为空，请选择一个空目录。".into());
+        }
+    }
+
+    emit_line(&app, format!("==> 正在从 GitHub 克隆项目..."));
+    emit_line(&app, format!("git clone {} {}", CLONE_URL, target_dir));
+
+    let repo = git2::build::RepoBuilder::new()
+        .clone(CLONE_URL, &path)
+        .map_err(|error| format!("克隆项目失败：{error}"))?;
+
+    let branch = repo
+        .head()
+        .and_then(|head| head.shorthand().map(str::to_string).ok_or("无法读取分支名".into()))
+        .unwrap_or_else(|_| "main".to_string());
+
+    emit_line(&app, format!("OK  项目克隆完成，当前分支：{branch}"));
+    Ok(target_dir)
+}
+
 fn config_value(value: &Value, key: &str, default: &str) -> String {
     value
         .get(key)
@@ -1266,6 +1297,7 @@ pub fn run() {
             save_secret_config,
             check_setup_complete,
             complete_setup,
+            clone_project,
             quick_check,
             native_deploy,
             native_rollback,

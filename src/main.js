@@ -114,6 +114,30 @@ async function browseSshKey() {
   }
 }
 
+async function initProject() {
+  if (state.running) return;
+  try {
+    const selected = await open({ directory: true, multiple: false, title: "选择一个空文件夹来存放项目" });
+    if (!selected) return;
+    state.running = true;
+    state.activeAction = "clone";
+    state.progress = 3;
+    state.logs = [];
+    render();
+    const resultPath = await invoke("clone_project", { targetDir: selected });
+    state.projectPath = resultPath;
+    localStorage.setItem("xiaxia.projectPath", state.projectPath);
+    state.progress = 100;
+    appendLog("OK  项目初始化完成，可以开始使用了");
+  } catch (error) {
+    appendLog(`初始化失败：${error}`);
+  } finally {
+    state.running = false;
+    state.activeAction = "";
+    await refreshStatus();
+  }
+}
+
 async function runAssistant(action, extraArgs = []) {
   if (state.running) return;
   if (!state.projectPath) {
@@ -257,6 +281,7 @@ async function runNativeRollback(commit) {
 
 function actionLabel() {
   if (!state.running) return "空闲";
+  if (state.activeAction === "clone") return "正在初始化项目";
   if (state.activeAction === "quickCheck") return "正在快速检查";
   if (state.activeAction === "check") return "正在检查";
   if (state.activeAction === "deploy") return "正在发布";
@@ -399,10 +424,14 @@ function render() {
           <input id="commitMessage" placeholder="例如：修复案件查询分页" value="${escapeHtml(state.commitMessage)}" ${state.running ? "disabled" : ""} />
         </label>
         <div class="button-row">
-          <button id="refresh" ${state.running ? "disabled" : ""}>刷新状态</button>
-          <button id="quickCheck" ${state.running ? "disabled" : ""}>检查</button>
-          <button id="fullCheck" ${state.running ? "disabled" : ""}>完整检查</button>
-          <button id="deploy" class="primary" ${state.running ? "disabled" : ""}>发布到服务器</button>
+          ${state.projectPath ? `
+            <button id="refresh" ${state.running ? "disabled" : ""}>刷新状态</button>
+            <button id="quickCheck" ${state.running ? "disabled" : ""}>检查</button>
+            <button id="fullCheck" ${state.running ? "disabled" : ""}>完整检查</button>
+            <button id="deploy" class="primary" ${state.running ? "disabled" : ""}>发布到服务器</button>
+          ` : `
+            <button id="initProject" class="primary" ${state.running ? "disabled" : ""}>初始化项目</button>
+          `}
         </div>
       </section>
 
@@ -446,6 +475,7 @@ function render() {
     state.commitMessage = event.target.value.trim();
   });
   document.querySelector("#refresh")?.addEventListener("click", refreshStatus);
+  document.querySelector("#initProject")?.addEventListener("click", initProject);
   document.querySelector("#editSecrets")?.addEventListener("click", openSecretModal);
   document.querySelector("#quickCheck")?.addEventListener("click", runQuickCheck);
   document.querySelector("#fullCheck")?.addEventListener("click", () => runAssistant("check"));
