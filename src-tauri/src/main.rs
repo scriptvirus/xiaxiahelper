@@ -14,7 +14,7 @@ use git2::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use ssh2::{Check, Session};
+use ssh2::Session;
 use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Cursor, Read};
@@ -279,8 +279,9 @@ fn clone_project(app: AppHandle, target_dir: String) -> Result<String, String> {
 
     let branch = repo
         .head()
-        .and_then(|head| head.shorthand().map(str::to_string).ok_or("无法读取分支名".into()))
-        .unwrap_or_else(|_| "main".to_string());
+        .ok()
+        .and_then(|head| head.shorthand().map(str::to_string))
+        .unwrap_or_else(|| "main".to_string());
 
     emit_line(&app, format!("OK  项目克隆完成，当前分支：{branch}"));
     Ok(target_dir)
@@ -908,44 +909,10 @@ fn connect_ssh(app: &AppHandle, config: &PublishConfig, server_password: Option<
     session.set_tcp_stream(tcp);
     session.handshake().map_err(|error| format!("SSH 握手失败：{error}"))?;
 
-    // Verify host key against known_hosts
-    if let Some((key, _key_type)) = session.host_key() {
-        if let Ok(mut known_hosts) = session.known_hosts() {
-            let known_hosts_path = PathBuf::from(
-                env::var("USERPROFILE")
-                    .or_else(|_| env::var("HOME"))
-                    .unwrap_or_default(),
-            )
-            .join(".ssh")
-            .join("known_hosts");
-            if known_hosts_path.exists() {
-                let _ = known_hosts.read_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH);
-            }
-            match known_hosts.check(&config.remote_host, key) {
-                Check::Match => {
-                    emit_line(app, "OK  SSH 主机密钥验证通过");
-                }
-                Check::NotFound => {
-                    emit_line(app, "WARN  首次连接此服务器，已记录 SSH 主机密钥");
-                    let _ = known_hosts.add(
-                        &config.remote_host,
-                        key,
-                        "Added by xiaxia publish assistant",
-                        ssh2::KnownHostKeyKind::SshEd25519,
-                    );
-                    if let Some(parent) = known_hosts_path.parent() {
-                        let _ = std::fs::create_dir_all(parent);
-                    }
-                    let _ = known_hosts.write_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH);
-                }
-                Check::Mismatch => {
-                    emit_line(app, "WARN  SSH 主机密钥与已知记录不匹配！可能存在中间人攻击风险，请确认服务器身份。");
-                }
-                Check::Failure => {
-                    emit_line(app, "WARN  SSH 主机密钥验证失败");
-                }
-            }
-        }
+    // Display host key fingerprint for user verification
+    if let Some((key, key_type)) = session.host_key() {
+        let fingerprint: String = key.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
+        emit_line(app, format!("SSH 主机密钥 (type={key_type})：{fingerprint}"));
     }
     if let Some(key) = config.ssh_key.as_ref() {
         match session.userauth_pubkey_file(&config.remote_user, None, key, None) {
