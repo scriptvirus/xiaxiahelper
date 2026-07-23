@@ -192,9 +192,7 @@ async function runNativeDeploy() {
   }
   const secrets = state.secretStatus;
   if (!secrets || !secrets.githubToken) {
-    state.setupComplete = false;
-    state.setupError = "请先设置 GitHub Token 后再发布。";
-    render();
+    appendLog("请先在首次设置中配置 GitHub Token 后再发布。");
     return;
   }
   const message = state.commitMessage || `desktop deploy ${new Date().toLocaleString("zh-CN", { hour12: false })}`;
@@ -213,11 +211,6 @@ async function runNativeDeploy() {
     state.progress = result.code === 0 ? 100 : state.progress;
     appendLog(result.code === 0 ? "桌面端：原生发布完成" : `桌面端：原生发布失败，退出码 ${result.code}`);
   } catch (error) {
-    const text = String(error);
-    if (text.includes("GitHub Token") || text.includes("SSH key") || text.includes("服务器密码")) {
-      state.setupComplete = false;
-      state.setupError = text;
-    }
     appendLog(`桌面端错误：${error}`);
   } finally {
     setRunning("", false);
@@ -245,15 +238,6 @@ async function saveSetupSecrets() {
     state.setupError = `保存失败：${error}`;
     render();
   }
-}
-
-function openSecretModal() {
-  state.githubToken = "";
-  state.sshKey = "";
-  state.serverPassword = "";
-  state.setupError = "";
-  state.setupComplete = false;
-  render();
 }
 
 async function runNativeRollback(commit) {
@@ -437,7 +421,6 @@ function render() {
 
       <section class="secret-summary">
         <span>${escapeHtml(secretStatusText())}</span>
-        <button id="editSecrets" ${state.running ? "disabled" : ""}>修改凭据</button>
       </section>
 
       <section class="progress-panel">
@@ -476,7 +459,6 @@ function render() {
   });
   document.querySelector("#refresh")?.addEventListener("click", refreshStatus);
   document.querySelector("#initProject")?.addEventListener("click", initProject);
-  document.querySelector("#editSecrets")?.addEventListener("click", openSecretModal);
   document.querySelector("#quickCheck")?.addEventListener("click", runQuickCheck);
   document.querySelector("#fullCheck")?.addEventListener("click", () => runAssistant("check"));
   document.querySelector("#deploy")?.addEventListener("click", runNativeDeploy);

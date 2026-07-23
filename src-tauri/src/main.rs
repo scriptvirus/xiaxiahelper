@@ -112,7 +112,7 @@ fn project_root(project_path: &str) -> Result<PathBuf, String> {
 
 fn expand_home(path: &str) -> PathBuf {
     if let Some(stripped) = path.strip_prefix("~/") {
-        if let Ok(home) = env::var("HOME") {
+        if let Ok(home) = env::var("HOME").or_else(|_| env::var("USERPROFILE")) {
             return PathBuf::from(home).join(stripped);
         }
     }
