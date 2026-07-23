@@ -912,7 +912,7 @@ fn connect_ssh(app: &AppHandle, config: &PublishConfig, server_password: Option<
     // Display host key fingerprint for user verification
     if let Some((key, key_type)) = session.host_key() {
         let fingerprint: String = key.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
-        emit_line(app, format!("SSH 主机密钥 (type={key_type})：{fingerprint}"));
+        emit_line(app, format!("SSH 主机密钥 (type={key_type:?})：{fingerprint}"));
     }
     if let Some(key) = config.ssh_key.as_ref() {
         match session.userauth_pubkey_file(&config.remote_user, None, key, None) {
