@@ -1,0 +1,339 @@
+:root {
+  color: #1b1d21;
+  background: #f4f2ed;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 920px;
+  min-height: 100vh;
+  background:
+    linear-gradient(180deg, rgba(49, 116, 143, 0.1), transparent 260px),
+    #f4f2ed;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  height: 38px;
+  border: 1px solid #c8c1b5;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #23262b;
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: #f7f7f7;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.54;
+}
+
+button.primary {
+  border-color: #145c70;
+  background: #176c82;
+  color: #ffffff;
+}
+
+button.primary:hover:not(:disabled) {
+  background: #145c70;
+}
+
+button.small {
+  height: 32px;
+  padding: 0 10px;
+}
+
+button.danger {
+  border-color: #b44a4a;
+  color: #983737;
+}
+
+.shell {
+  width: min(1180px, calc(100vw - 48px));
+  margin: 0 auto;
+  padding: 28px 0 36px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+p {
+  margin: 4px 0 0;
+  color: #5f6670;
+}
+
+.state-pill {
+  min-width: 92px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #e7f0f1;
+  color: #145c70;
+  font-weight: 700;
+}
+
+.control-band,
+.secret-summary,
+.progress-panel,
+.panel {
+  border: 1px solid #ded8ce;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 10px 30px rgba(39, 43, 51, 0.06);
+}
+
+.control-band {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(260px, 0.8fr) auto;
+  gap: 16px;
+  align-items: end;
+  padding: 16px;
+}
+
+.secret-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 12px 16px;
+  color: #4b515a;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  color: #4b515a;
+  font-weight: 700;
+}
+
+input {
+  height: 40px;
+  border: 1px solid #c8c1b5;
+  border-radius: 6px;
+  background: #fff;
+  padding: 0 12px;
+  color: #1b1d21;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.progress-panel {
+  margin-top: 14px;
+  padding: 14px 16px;
+}
+
+.progress-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  color: #3f4650;
+}
+
+.progress-track {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8e2d8;
+}
+
+.progress-track > div {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #176c82, #4c8f75);
+  transition: width 180ms ease;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.panel {
+  min-height: 250px;
+  padding: 14px;
+}
+
+.panel-title {
+  margin-bottom: 12px;
+  color: #303640;
+  font-weight: 800;
+}
+
+.commit-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid #ece6dc;
+}
+
+.commit-row:first-of-type {
+  border-top: 0;
+}
+
+.commit-index {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #eef4f5;
+  color: #176c82;
+  font-weight: 800;
+}
+
+.commit-main {
+  min-width: 0;
+}
+
+.commit-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #20242a;
+  font-weight: 700;
+}
+
+.commit-sha {
+  color: #747b85;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.status-pre,
+.log-box {
+  width: 100%;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #23262b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.status-pre {
+  max-height: 360px;
+}
+
+.log-panel {
+  min-height: 360px;
+}
+
+.log-box {
+  height: 300px;
+  padding: 12px;
+  border-radius: 6px;
+  background: #181c20;
+  color: #e6edf0;
+}
+
+.empty {
+  color: #747b85;
+}
+
+/* ── Setup modal ── */
+
+.setup-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1000;
+}
+
+.setup-modal {
+  width: min(460px, calc(100vw - 48px));
+  padding: 32px 28px 28px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+}
+
+.setup-modal h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 760;
+  color: #1b1d21;
+}
+
+.setup-modal > p {
+  margin: 0 0 20px;
+  color: #5f6670;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.setup-modal label {
+  margin-bottom: 14px;
+}
+
+.setup-modal label span em {
+  font-style: normal;
+  color: #b44a4a;
+}
+
+.setup-modal input {
+  width: 100%;
+}
+
+.setup-error {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: #fdf0f0;
+  color: #983737;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.setup-hint {
+  margin: 0;
+  color: #747b85;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.setup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
