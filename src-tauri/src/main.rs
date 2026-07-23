@@ -680,8 +680,10 @@ fn quick_check(project_path: String) -> Result<QuickCheckResult, String> {
     if let Some(key) = key {
         if key.exists() {
             ok_line(&mut lines, &format!("SSH key 存在：{}", key.display()));
+        } else if password.is_some() {
+            lines.push(format!("WARN  SSH key 不存在：{}，但已配置服务器密码，将使用密码登录", key.display()));
         } else {
-            fail_line(&mut lines, &format!("SSH key 不存在：{}", key.display()));
+            fail_line(&mut lines, &format!("SSH key 不存在：{}，且未配置服务器密码", key.display()));
             ok = false;
         }
     } else if password.is_some() {
@@ -1108,7 +1110,12 @@ fn native_deploy(
     }
     if let Some(key) = &config.ssh_key {
         if !key.exists() {
-            return Err(format!("SSH key 不存在：{}", key.display()));
+            if server_password.is_some() {
+                emit_line(&app, format!("WARN  SSH key 不存在：{}，将使用服务器密码登录", key.display()));
+                config.ssh_key = None;
+            } else {
+                return Err(format!("SSH key 不存在：{}，且未配置服务器密码。", key.display()));
+            }
         }
     } else if server_password.is_none() {
         return Err("原生发布必须配置 SSH key 或服务器密码。".into());
