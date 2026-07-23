@@ -1,11 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-dialog";
 import "./styles.css";
 
-const DEFAULT_PROJECT = "/Users/chance/liuk";
-
 const state = {
-  projectPath: localStorage.getItem("xiaxia.projectPath") || DEFAULT_PROJECT,
+  projectPath: localStorage.getItem("xiaxia.projectPath") || "",
   commitMessage: localStorage.getItem("xiaxia.commitMessage") || "",
   githubToken: "",
   sshKey: "",
@@ -72,8 +71,10 @@ function setRunning(action, value) {
 
 async function refreshStatus() {
   try {
-    state.status = await invoke("project_status", { projectPath: state.projectPath });
-    state.commits = await invoke("recent_commits", { projectPath: state.projectPath });
+    if (state.projectPath) {
+      state.status = await invoke("project_status", { projectPath: state.projectPath });
+      state.commits = await invoke("recent_commits", { projectPath: state.projectPath });
+    }
     state.secretStatus = await invoke("saved_secrets_status");
     const setup = await invoke("check_setup_complete");
     state.setupComplete = setup.complete;
@@ -83,8 +84,42 @@ async function refreshStatus() {
   render();
 }
 
+async function browseProjectPath() {
+  try {
+    const selected = await open({ directory: true, multiple: false, title: "选择项目目录" });
+    if (selected) {
+      state.projectPath = selected;
+      localStorage.setItem("xiaxia.projectPath", state.projectPath);
+      await refreshStatus();
+    }
+  } catch (error) {
+    appendLog(`选择目录失败：${error}`);
+  }
+}
+
+async function browseSshKey() {
+  try {
+    const selected = await open({
+      directory: false,
+      multiple: false,
+      title: "选择 SSH 私钥文件",
+      filters: [{ name: "密钥文件", extensions: ["pem", "key", "ed25519", "rsa"] }],
+    });
+    if (selected) {
+      state.sshKey = selected;
+      render();
+    }
+  } catch (error) {
+    appendLog(`选择文件失败：${error}`);
+  }
+}
+
 async function runAssistant(action, extraArgs = []) {
   if (state.running) return;
+  if (!state.projectPath) {
+    appendLog("请先选择项目目录。");
+    return;
+  }
   localStorage.setItem("xiaxia.projectPath", state.projectPath);
   localStorage.setItem("xiaxia.commitMessage", state.commitMessage);
   setRunning(action, true);
@@ -106,6 +141,10 @@ async function runAssistant(action, extraArgs = []) {
 
 async function runQuickCheck() {
   if (state.running) return;
+  if (!state.projectPath) {
+    appendLog("请先选择项目目录。");
+    return;
+  }
   localStorage.setItem("xiaxia.projectPath", state.projectPath);
   setRunning("quickCheck", true);
   try {
@@ -123,6 +162,10 @@ async function runQuickCheck() {
 
 async function runNativeDeploy() {
   if (state.running) return;
+  if (!state.projectPath) {
+    appendLog("请先选择项目目录。");
+    return;
+  }
   const secrets = state.secretStatus;
   if (!secrets || !secrets.githubToken) {
     state.setupComplete = false;
@@ -191,6 +234,10 @@ function openSecretModal() {
 
 async function runNativeRollback(commit) {
   if (state.running) return;
+  if (!state.projectPath) {
+    appendLog("请先选择项目目录。");
+    return;
+  }
   localStorage.setItem("xiaxia.projectPath", state.projectPath);
   setRunning("rollback", true);
   try {
@@ -218,6 +265,7 @@ function actionLabel() {
 }
 
 function statusText() {
+  if (!state.projectPath) return "未选择项目目录";
   if (!state.status) return "未读取";
   if (state.status.error) return state.status.error;
   const changed = state.status.status ? `${state.status.status.split("\n").length} 项变动` : "工作区干净";
@@ -255,7 +303,10 @@ function renderSetupModal() {
         </label>
         <label>
           <span>SSH 私钥路径</span>
-          <input id="setupSshKey" placeholder="可留空，如 ~/.ssh/id_rsa" value="${escapeHtml(state.sshKey)}" />
+          <div class="input-row">
+            <input id="setupSshKey" placeholder="可留空，如 ~/.ssh/id_rsa" value="${escapeHtml(state.sshKey)}" />
+            <button id="browseSshKey" class="browse-btn" title="浏览文件">浏览</button>
+          </div>
         </label>
         <label>
           <span>服务器密码</span>
@@ -315,6 +366,7 @@ function render() {
     document.querySelector("#setupSshKey")?.addEventListener("input", (event) => {
       state.sshKey = event.target.value.trim();
     });
+    document.querySelector("#browseSshKey")?.addEventListener("click", browseSshKey);
     document.querySelector("#setupServerPassword")?.addEventListener("input", (event) => {
       state.serverPassword = event.target.value;
     });
@@ -337,7 +389,10 @@ function render() {
       <section class="control-band">
         <label>
           <span>项目目录</span>
-          <input id="projectPath" value="${escapeHtml(state.projectPath)}" ${state.running ? "disabled" : ""} />
+          <div class="input-row">
+            <input id="projectPath" placeholder="请点击浏览选择项目目录" value="${escapeHtml(state.projectPath)}" ${state.running ? "disabled" : ""} />
+            <button id="browseProject" class="browse-btn" ${state.running ? "disabled" : ""} title="浏览文件夹">浏览</button>
+          </div>
         </label>
         <label>
           <span>发布说明</span>
@@ -384,7 +439,9 @@ function render() {
 
   document.querySelector("#projectPath")?.addEventListener("input", (event) => {
     state.projectPath = event.target.value.trim();
+    localStorage.setItem("xiaxia.projectPath", state.projectPath);
   });
+  document.querySelector("#browseProject")?.addEventListener("click", browseProjectPath);
   document.querySelector("#commitMessage")?.addEventListener("input", (event) => {
     state.commitMessage = event.target.value.trim();
   });

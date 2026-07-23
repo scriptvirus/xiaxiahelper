@@ -20,4 +20,5 @@ sha2 = "0.10"
 ssh2 = { version = "0.9", features = ["vendored-openssl"] }
 tar = "0.4"
 tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
 walkdir = "2"

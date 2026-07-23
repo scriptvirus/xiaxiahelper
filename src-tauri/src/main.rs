@@ -14,7 +14,7 @@ use git2::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use ssh2::Session;
+use ssh2::{Check, Session};
 use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Cursor, Read};
@@ -323,6 +323,31 @@ fn effective_server_password(input: &str, secrets: &SecretConfig) -> Option<Stri
 
 fn merged_path() -> String {
     let mut entries: Vec<String> = Vec::new();
+    if cfg!(target_os = "windows") {
+        // nvm-windows default path
+        if let Ok(appdata) = env::var("APPDATA") {
+            let nvm_home = PathBuf::from(&appdata).join("nvm");
+            if nvm_home.exists() {
+                entries.push(nvm_home.to_string_lossy().to_string());
+            }
+        }
+        // Common Windows tool locations
+        for dir in [
+            "C:\\Python313",
+            "C:\\Python312",
+            "C:\\Python311",
+            "C:\\Python310",
+            "C:\\Program Files\\Git\\cmd",
+        ] {
+            if Path::new(dir).exists() {
+                entries.push(dir.to_string());
+            }
+        }
+        if let Ok(current) = env::var("PATH") {
+            entries.push(current);
+        }
+        return entries.join(";");
+    }
     if let Ok(home) = env::var("HOME") {
         entries.push(format!("{home}/.cargo/bin"));
         let nvm_versions = PathBuf::from(&home).join(".nvm/versions/node");
@@ -670,6 +695,9 @@ fn matches_excluded(relative: &str) -> bool {
     if normalized == ".DS_Store" || normalized.ends_with("/.DS_Store") {
         return true;
     }
+    if normalized == ".env" || normalized.ends_with("/.env") {
+        return true;
+    }
     if normalized.starts_with("data/backups/") {
         return true;
     }
@@ -848,6 +876,46 @@ fn connect_ssh(app: &AppHandle, config: &PublishConfig, server_password: Option<
     let mut session = Session::new().map_err(|error| format!("创建 SSH 会话失败：{error}"))?;
     session.set_tcp_stream(tcp);
     session.handshake().map_err(|error| format!("SSH 握手失败：{error}"))?;
+
+    // Verify host key against known_hosts
+    if let Some((key, _key_type)) = session.host_key() {
+        if let Ok(mut known_hosts) = session.known_hosts() {
+            let known_hosts_path = PathBuf::from(
+                env::var("USERPROFILE")
+                    .or_else(|_| env::var("HOME"))
+                    .unwrap_or_default(),
+            )
+            .join(".ssh")
+            .join("known_hosts");
+            if known_hosts_path.exists() {
+                let _ = known_hosts.read_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH);
+            }
+            match known_hosts.check(&config.remote_host, key) {
+                Check::Match => {
+                    emit_line(app, "OK  SSH 主机密钥验证通过");
+                }
+                Check::NotFound => {
+                    emit_line(app, "WARN  首次连接此服务器，已记录 SSH 主机密钥");
+                    let _ = known_hosts.add(
+                        &config.remote_host,
+                        key,
+                        "Added by xiaxia publish assistant",
+                        ssh2::KnownHostKeyKind::SshEd25519,
+                    );
+                    if let Some(parent) = known_hosts_path.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    let _ = known_hosts.write_file(&known_hosts_path, ssh2::KnownHostFileKind::OpenSSH);
+                }
+                Check::Mismatch => {
+                    emit_line(app, "WARN  SSH 主机密钥与已知记录不匹配！可能存在中间人攻击风险，请确认服务器身份。");
+                }
+                Check::Failure => {
+                    emit_line(app, "WARN  SSH 主机密钥验证失败");
+                }
+            }
+        }
+    }
     if let Some(key) = config.ssh_key.as_ref() {
         match session.userauth_pubkey_file(&config.remote_user, None, key, None) {
             Ok(_) => emit_line(app, "OK  SSH key 登录成功"),
@@ -1190,6 +1258,7 @@ fn run_assistant(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             project_status,
             recent_commits,

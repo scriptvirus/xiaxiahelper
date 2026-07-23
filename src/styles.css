@@ -144,6 +144,24 @@ input {
   color: #1b1d21;
 }
 
+.input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.input-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.browse-btn {
+  flex-shrink: 0;
+  height: 40px;
+  padding: 0 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 .button-row {
   display: flex;
   flex-wrap: wrap;
