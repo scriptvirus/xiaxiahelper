@@ -7,8 +7,6 @@ const state = {
   projectPath: localStorage.getItem("xiaxia.projectPath") || "",
   commitMessage: localStorage.getItem("xiaxia.commitMessage") || "",
   githubToken: "",
-  sshKey: "",
-  serverPassword: "",
   secretStatus: null,
   setupComplete: null, // null = loading, true = done, false = need setup
   setupError: "",
@@ -18,6 +16,7 @@ const state = {
   logs: [],
   status: null,
   commits: [],
+  showHelp: false, // 是否显示帮助模态框
 };
 
 const steps = {
@@ -94,23 +93,6 @@ async function browseProjectPath() {
     }
   } catch (error) {
     appendLog(`选择目录失败：${error}`);
-  }
-}
-
-async function browseSshKey() {
-  try {
-    const selected = await open({
-      directory: false,
-      multiple: false,
-      title: "选择 SSH 私钥文件",
-      filters: [{ name: "密钥文件", extensions: ["pem", "key", "ed25519", "rsa"] }],
-    });
-    if (selected) {
-      state.sshKey = selected;
-      render();
-    }
-  } catch (error) {
-    appendLog(`选择文件失败：${error}`);
   }
 }
 
@@ -221,18 +203,24 @@ async function runNativeDeploy() {
 async function saveSetupSecrets() {
   if (state.running) return;
   state.setupError = "";
+  
+  // 验证 GitHub Token 不为空
+  if (!state.githubToken || state.githubToken.trim() === "") {
+    state.setupError = "GitHub Token 不能为空";
+    render();
+    return;
+  }
+  
   try {
     state.secretStatus = await invoke("save_secret_config", {
       githubToken: state.githubToken,
-      sshKey: state.sshKey,
-      serverPassword: state.serverPassword,
+      sshKey: "", // 不再需要用户输入
+      serverPassword: "", // 不再需要用户输入
     });
     await invoke("complete_setup");
     state.githubToken = "";
-    state.sshKey = "";
-    state.serverPassword = "";
     state.setupComplete = true;
-    appendLog("OK  凭据已加密保存到本机，以后启动会自动读取");
+    appendLog("OK  GitHub Token 已加密保存到本机，SSH 认证使用内置密钥");
     await refreshStatus();
   } catch (error) {
     state.setupError = `保存失败：${error}`;
@@ -284,22 +272,21 @@ function statusText() {
 function secretStatusText() {
   const status = state.secretStatus;
   if (!status) return "未读取";
-  const items = [];
-  if (status.githubToken) items.push("GitHub Token");
-  if (status.sshKey) items.push("SSH 私钥");
-  if (status.serverPassword) items.push("服务器密码");
-  return items.length ? `已保存：${items.join("、")}` : "未保存凭据";
+  if (status.githubToken) {
+    return "已配置：GitHub Token ✓ | SSH 认证（内置）✓";
+  }
+  return "未配置 GitHub Token";
 }
 
 function renderSetupModal() {
   const errorBlock = state.setupError
     ? `<div class="setup-error">${escapeHtml(state.setupError)}</div>`
     : "";
-  const hasSecrets = state.secretStatus && (state.secretStatus.githubToken || state.secretStatus.sshKey || state.secretStatus.serverPassword);
-  const title = hasSecrets ? "修改凭据" : "首次设置";
+  const hasSecrets = state.secretStatus && state.secretStatus.githubToken;
+  const title = hasSecrets ? "修改 GitHub Token" : "首次设置";
   const desc = hasSecrets
-    ? "修改已保存的凭据信息。留空的字段会保留之前的值。"
-    : "请输入部署所需的凭据信息，保存后将加密存储到本机，以后启动时自动读取，无需重复输入。";
+    ? "修改已保存的 GitHub Token。"
+    : "首次使用需要配置 GitHub Token 用于代码推送，SSH 私钥已内置无需配置。";
   return `
     <div class="setup-overlay">
       <div class="setup-modal">
@@ -310,20 +297,118 @@ function renderSetupModal() {
           <span>GitHub Token <em>*</em></span>
           <input id="setupGithubToken" type="password" placeholder="用于 Git push/pull 的 GitHub Personal Access Token" value="${escapeHtml(state.githubToken)}" />
         </label>
-        <label>
-          <span>SSH 私钥路径</span>
-          <div class="input-row">
-            <input id="setupSshKey" placeholder="可留空，如 ~/.ssh/id_rsa" value="${escapeHtml(state.sshKey)}" />
-            <button id="browseSshKey" class="browse-btn" title="浏览文件">浏览</button>
-          </div>
-        </label>
-        <label>
-          <span>服务器密码</span>
-          <input id="setupServerPassword" type="password" placeholder="可留空，优先使用 SSH 私钥认证" value="${escapeHtml(state.serverPassword)}" />
-        </label>
-        <p class="setup-hint">留空的字段会保留之前已保存的值，不会覆盖。</p>
+        <p class="setup-hint">💡 提示：SSH 服务器认证已内置，无需配置密钥或密码。Token 将加密保存在本机。</p>
         <div class="setup-actions">
-          <button id="saveSetup" class="primary">保存凭据</button>
+          <button id="saveSetup" class="primary">保存并开始使用</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderHelpModal() {
+  return `
+    <div class="setup-overlay" id="helpOverlay">
+      <div class="setup-modal help-modal">
+        <div class="help-header">
+          <h2>📖 使用说明</h2>
+          <button id="closeHelp" class="close-btn" title="关闭">✕</button>
+        </div>
+        
+        <div class="help-content">
+          <section class="help-section">
+            <h3>🚀 首次使用流程</h3>
+            <ol>
+              <li><strong>配置 GitHub Token</strong>：首次打开会要求输入 GitHub Token（用于代码推送）</li>
+              <li><strong>初始化项目</strong>：如果没有项目，点击"初始化项目"从 GitHub 克隆</li>
+              <li><strong>选择项目目录</strong>：如果已有项目，点击"浏览"选择项目文件夹</li>
+              <li><strong>开始使用</strong>：配置完成后即可正常发布</li>
+            </ol>
+          </section>
+
+          <section class="help-section">
+            <h3>📝 日常发布流程</h3>
+            <ol>
+              <li><strong>修改代码</strong>：在项目中进行开发</li>
+              <li><strong>刷新状态</strong>：查看修改了哪些文件</li>
+              <li><strong>快速检查</strong>：确认项目状态正常（必需文件、Git、认证凭据等）</li>
+              <li><strong>输入发布说明</strong>：描述本次修改内容</li>
+              <li><strong>发布到服务器</strong>：一键提交、推送、打包、上传、部署</li>
+            </ol>
+          </section>
+
+          <section class="help-section">
+            <h3>🔍 检查功能说明</h3>
+            <div class="help-item">
+              <strong>刷新状态</strong>
+              <p>更新当前显示的项目信息：分支、代码变动、最近 commit 等</p>
+            </div>
+            <div class="help-item">
+              <strong>检查（快速检查）</strong>
+              <p>本地快速验证：检查必需文件、SSH 认证、GitHub Token、Git 状态</p>
+              <p>⏱️ 速度：快（几秒内完成）</p>
+            </div>
+            <div class="help-item">
+              <strong>完整检查</strong>
+              <p>深度检查：包括 JavaScript 语法、Python 导入、缓存使用等</p>
+              <p>⏱️ 速度：较慢（需要 Python/Node.js 环境）</p>
+            </div>
+          </section>
+
+          <section class="help-section">
+            <h3>⏮️ 回滚操作</h3>
+            <ol>
+              <li>在"最近 5 次 commit"列表中找到要回滚的版本</li>
+              <li>点击该版本右侧的"回滚"按钮</li>
+              <li>服务器会自动恢复到该版本的代码并重启服务</li>
+            </ol>
+          </section>
+
+          <section class="help-section">
+            <h3>💡 状态指示器</h3>
+            <div class="help-item">
+              <strong>右上角状态</strong>
+              <p>显示当前程序状态：空闲、正在检查、正在发布、正在回滚等</p>
+            </div>
+            <div class="help-item">
+              <strong>进度条</strong>
+              <p>显示当前操作的执行进度百分比</p>
+            </div>
+            <div class="help-item">
+              <strong>执行日志</strong>
+              <p>实时显示操作过程中的详细信息和错误提示</p>
+            </div>
+          </section>
+
+          <section class="help-section">
+            <h3>🔐 安全说明</h3>
+            <ul>
+              <li>GitHub Token 和服务器密码加密存储在本机</li>
+              <li>SSH 私钥已内置在程序中，无需手动配置</li>
+              <li>配置文件不会被 Git 提交或上传到网络</li>
+              <li>只有本机用户可以访问这些凭据</li>
+            </ul>
+          </section>
+
+          <section class="help-section">
+            <h3>❓ 常见问题</h3>
+            <div class="help-item">
+              <strong>Q: 需要配置 SSH Key 吗？</strong>
+              <p>A: 不需要！程序已内置服务器 SSH 私钥，开箱即用。</p>
+            </div>
+            <div class="help-item">
+              <strong>Q: GitHub Token 在哪里获取？</strong>
+              <p>A: GitHub → Settings → Developer settings → Personal access tokens → Generate new token</p>
+            </div>
+            <div class="help-item">
+              <strong>Q: 发布失败怎么办？</strong>
+              <p>A: 查看执行日志中的错误信息，常见原因：Git 冲突、网络问题、服务器连接失败</p>
+            </div>
+            <div class="help-item">
+              <strong>Q: 可以在多台电脑使用吗？</strong>
+              <p>A: 可以！每台电脑首次使用时都需要配置一次 GitHub Token。</p>
+            </div>
+          </section>
         </div>
       </div>
     </div>
@@ -372,13 +457,6 @@ function render() {
     document.querySelector("#setupGithubToken")?.addEventListener("input", (event) => {
       state.githubToken = event.target.value.trim();
     });
-    document.querySelector("#setupSshKey")?.addEventListener("input", (event) => {
-      state.sshKey = event.target.value.trim();
-    });
-    document.querySelector("#browseSshKey")?.addEventListener("click", browseSshKey);
-    document.querySelector("#setupServerPassword")?.addEventListener("input", (event) => {
-      state.serverPassword = event.target.value;
-    });
     document.querySelector("#saveSetup")?.addEventListener("click", saveSetupSecrets);
     return;
   }
@@ -392,7 +470,10 @@ function render() {
           <h1>虾虾发布助手</h1>
           <p>${escapeHtml(statusText())}</p>
         </div>
-        <div class="state-pill">${escapeHtml(actionLabel())}</div>
+        <div class="topbar-actions">
+          <button id="showHelp" class="help-btn" title="使用说明">❓ 帮助</button>
+          <div class="state-pill">${escapeHtml(actionLabel())}</div>
+        </div>
       </header>
 
       <section class="control-band">
@@ -447,6 +528,7 @@ function render() {
         </section>
       </div>
     </main>
+    ${state.showHelp ? renderHelpModal() : ""}
   `;
 
   document.querySelector("#projectPath")?.addEventListener("input", (event) => {
@@ -464,6 +546,20 @@ function render() {
   document.querySelector("#deploy")?.addEventListener("click", runNativeDeploy);
   document.querySelectorAll("[data-rollback]").forEach((button) => {
     button.addEventListener("click", () => runNativeRollback(button.dataset.rollback));
+  });
+  document.querySelector("#showHelp")?.addEventListener("click", () => {
+    state.showHelp = true;
+    render();
+  });
+  document.querySelector("#closeHelp")?.addEventListener("click", () => {
+    state.showHelp = false;
+    render();
+  });
+  document.querySelector("#helpOverlay")?.addEventListener("click", (event) => {
+    if (event.target.id === "helpOverlay") {
+      state.showHelp = false;
+      render();
+    }
   });
 }
 

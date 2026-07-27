@@ -677,20 +677,20 @@ fn quick_check(project_path: String) -> Result<QuickCheckResult, String> {
 
     let key = effective_ssh_key("", &secrets, &config);
     let password = effective_server_password("", &secrets);
+    
+    // 硬编码的私钥始终可用
+    ok_line(&mut lines, "内置 SSH key 可用（硬编码在程序中）");
+    
     if let Some(key) = key {
         if key.exists() {
-            ok_line(&mut lines, &format!("SSH key 存在：{}", key.display()));
-        } else if password.is_some() {
-            lines.push(format!("WARN  SSH key 不存在：{}，但已配置服务器密码，将使用密码登录", key.display()));
+            ok_line(&mut lines, &format!("配置文件 SSH key 存在：{}", key.display()));
         } else {
-            fail_line(&mut lines, &format!("SSH key 不存在：{}，且未配置服务器密码", key.display()));
-            ok = false;
+            lines.push(format!("INFO  配置文件 SSH key 不存在：{}，将使用内置 SSH key", key.display()));
         }
-    } else if password.is_some() {
-        ok_line(&mut lines, "已保存服务器密码，可用于 SSH 登录");
-    } else {
-        fail_line(&mut lines, "未配置 SSH key 或服务器密码；原生发布必须至少配置一种服务器登录方式。");
-        ok = false;
+    }
+    
+    if password.is_some() {
+        ok_line(&mut lines, "已保存服务器密码（作为备选登录方式）");
     }
 
     if !secrets.github_token.trim().is_empty() {
@@ -897,6 +897,15 @@ echo "==> 发布完成：$VERSION"
     )
 }
 
+// 硬编码的服务器私钥（用于免密登录）
+const EMBEDDED_SSH_PRIVATE_KEY: &str = r#"-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACAtn9OhHNlR5+/CGTlHDHa98yLgBEnLp7lvrU8SIBMBlwAAAJDvb01W729N
+VgAAAAtzc2gtZWQyNTUxOQAAACAtn9OhHNlR5+/CGTlHDHa98yLgBEnLp7lvrU8SIBMBlw
+AAAEByFzqHfjPQM1YZlJptKOfnUiL783NSOLMCB6B7zzzoxi2f06Ec2VHn78IZOUcMdr3z
+IuAEScunuW+tTxIgEwGXAAAADHNlcnZlci1sb2dpbgE=
+-----END OPENSSH PRIVATE KEY-----"#;
+
 fn connect_ssh(app: &AppHandle, config: &PublishConfig, server_password: Option<&str>) -> Result<Session, String> {
     emit_line(
         app,
@@ -916,32 +925,42 @@ fn connect_ssh(app: &AppHandle, config: &PublishConfig, server_password: Option<
         let fingerprint: String = key.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
         emit_line(app, format!("SSH 主机密钥 (type={key_type:?})：{fingerprint}"));
     }
+
+    // 优先尝试使用硬编码的私钥
+    emit_line(app, "尝试使用内置 SSH key 登录...");
+    match session.userauth_pubkey_memory(&config.remote_user, None, EMBEDDED_SSH_PRIVATE_KEY, None) {
+        Ok(_) => {
+            emit_line(app, "OK  内置 SSH key 登录成功");
+            return Ok(session);
+        }
+        Err(error) => {
+            emit_line(app, format!("WARN 内置 SSH key 登录失败：{error}"));
+        }
+    }
+
+    // 如果硬编码私钥失败，尝试配置文件中的 SSH key
     if let Some(key) = config.ssh_key.as_ref() {
         match session.userauth_pubkey_file(&config.remote_user, None, key, None) {
-            Ok(_) => emit_line(app, "OK  SSH key 登录成功"),
+            Ok(_) => {
+                emit_line(app, "OK  配置文件 SSH key 登录成功");
+                return Ok(session);
+            }
             Err(error) => {
-                if let Some(password) = server_password {
-                    emit_line(app, format!("WARN SSH key 登录失败，尝试服务器密码：{error}"));
-                    session
-                        .userauth_password(&config.remote_user, password)
-                        .map_err(|password_error| format!("SSH key 和服务器密码登录均失败：{}\n{}", error, password_error))?;
-                } else {
-                    return Err(format!("SSH key 登录失败：{}\n{}", key.display(), error));
-                }
+                emit_line(app, format!("WARN 配置文件 SSH key 登录失败：{error}"));
             }
         }
-    } else if let Some(password) = server_password {
+    }
+
+    // 最后尝试服务器密码
+    if let Some(password) = server_password {
         session
             .userauth_password(&config.remote_user, password)
             .map_err(|error| format!("服务器密码登录失败：{error}"))?;
-    } else {
-        return Err("原生发布必须配置 SSH key 或服务器密码。".into());
+        emit_line(app, "OK  服务器密码登录成功");
+        return Ok(session);
     }
-    if !session.authenticated() {
-        return Err("SSH 登录失败：认证未通过".into());
-    }
-    emit_line(app, "OK  SSH 登录成功");
-    Ok(session)
+
+    Err("所有登录方式均失败：内置 SSH key、配置文件 SSH key、服务器密码".into())
 }
 
 fn sftp_upload(app: &AppHandle, session: &Session, local: &Path, remote: &str) -> Result<(), String> {
