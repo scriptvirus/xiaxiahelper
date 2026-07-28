@@ -177,12 +177,29 @@ async function runNativeDeploy() {
     appendLog("请先在首次设置中配置 GitHub Token 后再发布。");
     return;
   }
-  const message = state.commitMessage || `desktop deploy ${new Date().toLocaleString("zh-CN", { hour12: false })}`;
-  localStorage.setItem("xiaxia.projectPath", state.projectPath);
-  localStorage.setItem("xiaxia.commitMessage", message);
-  state.commitMessage = message;
-  setRunning("deploy", true);
+
+  // 检查是否有代码变动
   try {
+    const status = await invoke("project_status", { projectPath: state.projectPath });
+    const hasChanges = status.status && status.status.trim() !== "";
+    
+    let message = state.commitMessage || `desktop deploy ${new Date().toLocaleString("zh-CN", { hour12: false })}`;
+    
+    // 如果有代码变动，弹框让用户确认或修改 commit 信息
+    if (hasChanges) {
+      const confirmed = await showCommitDialog(message, status.status);
+      if (!confirmed.ok) {
+        appendLog("用户取消发布");
+        return;
+      }
+      message = confirmed.message;
+    }
+    
+    localStorage.setItem("xiaxia.projectPath", state.projectPath);
+    localStorage.setItem("xiaxia.commitMessage", message);
+    state.commitMessage = message;
+    setRunning("deploy", true);
+    
     const result = await invoke("native_deploy", {
       projectPath: state.projectPath,
       message,
@@ -198,6 +215,75 @@ async function runNativeDeploy() {
     setRunning("", false);
     await refreshStatus();
   }
+}
+
+async function showCommitDialog(defaultMessage, changedFiles) {
+  return new Promise((resolve) => {
+    const lines = changedFiles.split("\n").slice(0, 10); // 最多显示10行
+    const moreCount = changedFiles.split("\n").length - lines.length;
+    const fileList = lines.map(escapeHtml).join("\n") + (moreCount > 0 ? `\n... 还有 ${moreCount} 个文件` : "");
+    
+    const overlay = document.createElement("div");
+    overlay.className = "setup-overlay";
+    overlay.innerHTML = `
+      <div class="setup-modal commit-dialog">
+        <h2>📝 确认代码提交</h2>
+        <p>检测到以下代码变动，请输入本次提交说明：</p>
+        <div class="changed-files">
+          <pre>${fileList}</pre>
+        </div>
+        <label>
+          <span>提交说明 <em>*</em></span>
+          <input id="commitMessageInput" type="text" placeholder="描述本次修改内容" value="${escapeHtml(defaultMessage)}" autofocus />
+        </label>
+        <div class="setup-actions">
+          <button id="cancelCommit" class="secondary">取消</button>
+          <button id="confirmCommit" class="primary">确认并发布</button>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(overlay);
+    
+    const input = document.getElementById("commitMessageInput");
+    const confirmBtn = document.getElementById("confirmCommit");
+    const cancelBtn = document.getElementById("cancelCommit");
+    
+    // 聚焦并选中输入框
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 100);
+    
+    // 回车键确认
+    input.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") {
+        const message = input.value.trim();
+        if (message) {
+          document.body.removeChild(overlay);
+          resolve({ ok: true, message });
+        }
+      }
+    });
+    
+    confirmBtn.addEventListener("click", () => {
+      const message = input.value.trim();
+      if (!message) {
+        input.style.borderColor = "#b44a4a";
+        input.focus();
+        return;
+      }
+      document.body.removeChild(overlay);
+      resolve({ ok: true, message });
+    });
+    
+    cancelBtn.addEventListener("click", () => {
+      document.body.removeChild(overlay);
+      resolve({ ok: false });
+    });
+    
+    // 点击遮罩层不关闭（防止误操作）
+  });
 }
 
 async function saveSetupSecrets() {

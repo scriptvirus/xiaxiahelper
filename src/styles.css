@@ -489,3 +489,39 @@ input {
   font-size: 14px;
   line-height: 1.6;
 }
+
+/* ── Commit confirmation dialog ── */
+
+.commit-dialog {
+  max-width: 540px;
+}
+
+.changed-files {
+  margin: 12px 0 16px;
+  padding: 12px;
+  border-radius: 6px;
+  background: #f9f8f6;
+  border: 1px solid #e0d8cc;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.changed-files pre {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #4b515a;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.setup-actions button.secondary {
+  border-color: #c8c1b5;
+  background: #ffffff;
+  color: #5f6670;
+}
+
+.setup-actions button.secondary:hover:not(:disabled) {
+  background: #f7f7f7;
+}
