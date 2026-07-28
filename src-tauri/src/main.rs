@@ -937,7 +937,11 @@ fn connect_ssh(app: &AppHandle, config: &PublishConfig, server_password: Option<
     let mut session = Session::new().map_err(|error| format!("创建 SSH 会话失败：{error}"))?;
     session.set_tcp_stream(tcp);
     session.set_timeout(30000); // 30 秒超时（毫秒）
+    session.set_blocking(true); // 设置为阻塞模式
+    
+    emit_line(app, "正在进行 SSH 握手...");
     session.handshake().map_err(|error| format!("SSH 握手失败：{error}"))?;
+    emit_line(app, "OK  SSH 握手完成");
 
     // Display host key fingerprint for user verification
     if let Some((key, key_type)) = session.host_key() {
@@ -947,6 +951,7 @@ fn connect_ssh(app: &AppHandle, config: &PublishConfig, server_password: Option<
 
     // 优先尝试使用硬编码的私钥
     emit_line(app, "尝试使用内置 SSH key 登录...");
+    emit_line(app, "（认证可能需要几秒钟，请稍候）");
     match session.userauth_pubkey_memory(&config.remote_user, None, EMBEDDED_SSH_PRIVATE_KEY, None) {
         Ok(_) => {
             emit_line(app, "OK  内置 SSH key 登录成功");
