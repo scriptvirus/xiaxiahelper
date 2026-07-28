@@ -18,7 +18,7 @@ use ssh2::Session;
 use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Cursor, Read};
-use std::net::{SocketAddr, TcpStream};
+use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::str::FromStr;
@@ -917,13 +917,16 @@ fn connect_ssh(app: &AppHandle, config: &PublishConfig, server_password: Option<
     );
     
     // 设置 TCP 连接超时为 30 秒
-    let tcp = TcpStream::connect_timeout(
-        &format!("{}:{}", config.remote_host, config.remote_port)
-            .parse()
-            .map_err(|error| format!("解析服务器地址失败：{error}"))?,
+    // 注意：connect_timeout 需要 SocketAddr，但我们有域名，所以使用 ToSocketAddrs
+    let addr = format!("{}:{}", config.remote_host, config.remote_port);
+    let tcp = std::net::TcpStream::connect_timeout(
+        &addr.to_socket_addrs()
+            .map_err(|error| format!("解析服务器地址失败：{}，请检查域名或IP是否正确", error))?
+            .next()
+            .ok_or_else(|| format!("无法解析服务器地址：{}", addr))?,
         std::time::Duration::from_secs(30),
     )
-    .map_err(|error| format!("连接服务器失败：{error}"))?;
+    .map_err(|error| format!("连接服务器失败：{}", error))?;
     
     // 设置读写超时
     tcp.set_read_timeout(Some(std::time::Duration::from_secs(30)))
