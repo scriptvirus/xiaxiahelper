@@ -18,9 +18,10 @@ use ssh2::Session;
 use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Cursor, Read};
-use std::net::TcpStream;
+use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::str::FromStr;
 use tauri::{AppHandle, Emitter};
 use walkdir::WalkDir;
 
@@ -914,10 +915,25 @@ fn connect_ssh(app: &AppHandle, config: &PublishConfig, server_password: Option<
             config.remote_user, config.remote_host, config.remote_port
         ),
     );
-    let tcp = TcpStream::connect((config.remote_host.as_str(), config.remote_port))
-        .map_err(|error| format!("连接服务器失败：{error}"))?;
+    
+    // 设置 TCP 连接超时为 30 秒
+    let tcp = TcpStream::connect_timeout(
+        &format!("{}:{}", config.remote_host, config.remote_port)
+            .parse()
+            .map_err(|error| format!("解析服务器地址失败：{error}"))?,
+        std::time::Duration::from_secs(30),
+    )
+    .map_err(|error| format!("连接服务器失败：{error}"))?;
+    
+    // 设置读写超时
+    tcp.set_read_timeout(Some(std::time::Duration::from_secs(30)))
+        .map_err(|error| format!("设置读超时失败：{error}"))?;
+    tcp.set_write_timeout(Some(std::time::Duration::from_secs(30)))
+        .map_err(|error| format!("设置写超时失败：{error}"))?;
+    
     let mut session = Session::new().map_err(|error| format!("创建 SSH 会话失败：{error}"))?;
     session.set_tcp_stream(tcp);
+    session.set_timeout(30000); // 30 秒超时（毫秒）
     session.handshake().map_err(|error| format!("SSH 握手失败：{error}"))?;
 
     // Display host key fingerprint for user verification
